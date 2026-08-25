@@ -36,7 +36,7 @@ A compact, real-time CPU utilization and network throughput monitor for KDE Plas
 ### Option 1: Git Clone (Recommended)
 ```bash
 mkdir -p ~/.local/share/plasma/plasmoids/
-git clone https://github.com/PlasmaDrifter/cpu-net-speed.git ~/.local/share/plasma/plasmoids/local.widget.cpu-net-speed
+git clone https://github.com/PlasmaDrifter/Widget-cpu-net-speed.git ~/.local/share/plasma/plasmoids/local.widget.cpu-net-speed
 ```
 
 ### Option 2: Plasma Package Installer
