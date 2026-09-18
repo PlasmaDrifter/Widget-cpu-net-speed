@@ -18,8 +18,6 @@ A compact, real-time CPU utilization and network throughput monitor for KDE Plas
 
 ![CPU & Network Speed Widget Preview](cpu-net-speed.png)
 
-![CPU & Network Speed Widget Preview](desktop-2.png)
-
 ---
 
 ## Features
