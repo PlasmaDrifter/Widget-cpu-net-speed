@@ -7,6 +7,9 @@
 
 A compact, real-time CPU utilization and network throughput monitor for KDE Plasma 6.
 
+> [!NOTE]
+> **Questions, custom configs, or ideas?** Join us on Reddit at <nobr>[**r/PlasmaDrifterProjects**](https://reddit.com/r/PlasmaDrifterProjects)</nobr>!
+
 ---
 
 ## Previews
@@ -14,8 +17,6 @@ A compact, real-time CPU utilization and network throughput monitor for KDE Plas
 ![CPU & Network Speed Widget Preview](cpu.net.png)
 
 ![CPU & Network Speed Widget Preview](cpu-net-speed.png)
-
-![CPU & Network Speed Widget Preview](desktop-2.png)
 
 ---
 
@@ -50,3 +51,11 @@ Then right-click your desktop or panel $\rightarrow$ **Add Widgets...** and sear
 
 - **Author / Maintainer**: PlasmaDrifter
 - **License**: Licensed under the [GPLv2](LICENSE).
+
+---
+
+## 💬 Community & Discussions
+
+Got questions, setup ideas, or feedback?
+
+* 🌐 Join our subreddit at [**r/PlasmaDrifterProjects**](https://reddit.com/r/PlasmaDrifterProjects) to discuss updates, get support, and share configurations.
