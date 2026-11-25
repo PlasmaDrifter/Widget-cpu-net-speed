@@ -1,9 +1,10 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Window
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PlasmaComponents3
-import org.kde.plasma.plasma5support as Plasma5Support
+import org.kde.ksysguard.sensors as Sensors
 import org.kde.kirigami as Kirigami
 
 PlasmoidItem {
@@ -14,9 +15,6 @@ PlasmoidItem {
     property real downloadMbps: 0
     property real uploadMbps: 0
 
-    property var prevCpu: null   // { total, idle }
-    property var prevNet: null   // { rx, tx, time, iface }
-
     readonly property color cpuColor: plasmoid.configuration.cpuColor
     readonly property color gpuColor: plasmoid.configuration.gpuColor
     readonly property color downloadColor: plasmoid.configuration.downloadColor
@@ -25,131 +23,70 @@ PlasmoidItem {
 
     readonly property real maxDownloadMbps: plasmoid.configuration.maxDownloadMbps
     readonly property real maxUploadMbps: plasmoid.configuration.maxUploadMbps
+    readonly property int updateMs: Math.max(500, (plasmoid.configuration.updateInterval || 2) * 1000)
+    readonly property string configuredIface: (plasmoid.configuration.networkInterface || "").trim()
+    readonly property string netPrefix: configuredIface.length > 0 ? ("network/" + configuredIface + "/") : "network/all/"
 
     toolTipMainText: ""
     toolTipSubText: ""
 
     function formatMbps(mbps) {
         if (mbps >= 1000) return (mbps / 1000).toFixed(2) + " Gbps"
-        return mbps.toFixed(1) + " Mbps"
-    }
-
-    function parseCpuLine(line) {
-        // "cpu  user nice system idle iowait irq softirq steal guest guest_nice"
-        var parts = line.trim().split(/\s+/)
-        if (parts.length < 5 || parts[0] !== "cpu") return null
-        var user = parseFloat(parts[1]) || 0
-        var nice = parseFloat(parts[2]) || 0
-        var system = parseFloat(parts[3]) || 0
-        var idle = parseFloat(parts[4]) || 0
-        var iowait = parseFloat(parts[5]) || 0
-        var irq = parseFloat(parts[6]) || 0
-        var softirq = parseFloat(parts[7]) || 0
-        var steal = parseFloat(parts[8]) || 0
-        var idleAll = idle + iowait
-        var total = user + nice + system + idle + iowait + irq + softirq + steal
-        return { total: total, idle: idleAll }
-    }
-
-    function parseNetDev(text, ifaceName) {
-        var lines = text.split("\n")
-        for (var i = 0; i < lines.length; i++) {
-            var line = lines[i]
-            var colonIdx = line.indexOf(":")
-            if (colonIdx < 0) continue
-            var name = line.substring(0, colonIdx).trim()
-            if (name !== ifaceName) continue
-            var rest = line.substring(colonIdx + 1).trim().split(/\s+/)
-            if (rest.length < 9) continue
-            return { rx: parseFloat(rest[0]) || 0, tx: parseFloat(rest[8]) || 0 }
+        if (mbps >= 1) return mbps.toFixed(1) + " Mbps"
+        if (mbps > 0) {
+            var kbps = mbps * 1000
+            if (kbps >= 1) return kbps.toFixed(0) + " Kbps"
+            return (kbps * 1000).toFixed(0) + " bps"
         }
-        return null
+        return "0 Mbps"
     }
 
-    function parseDefaultIface(text) {
-        // "default via 192.168.1.1 dev wlan0 proto dhcp metric 600"
-        var match = text.match(/\sdev\s+(\S+)/)
-        return match ? match[1] : ""
-    }
-
-    function handleOutput(text) {
-        var sections = text.split("###SPLIT###")
-        if (sections.length < 4) return
-
-        var cpuSection = sections[0].trim()
-        var gpuSection = sections[1].trim()
-        var netSection = sections[2]
-        var routeSection = sections[3].trim()
-
-        // --- CPU ---
-        var cpuLine = cpuSection.split("\n")[0]
-        var cur = parseCpuLine(cpuLine)
-        if (cur) {
-            if (prevCpu) {
-                var deltaTotal = cur.total - prevCpu.total
-                var deltaIdle = cur.idle - prevCpu.idle
-                if (deltaTotal > 0) {
-                    cpuPercent = Math.max(0, Math.min(100, 100 * (deltaTotal - deltaIdle) / deltaTotal))
-                }
-            }
-            prevCpu = cur
-        }
-
-        // --- GPU ---
-        var gpuValue = parseInt(gpuSection)
-        if (!isNaN(gpuValue)) {
-            gpuPercent = Math.max(0, Math.min(100, gpuValue))
-        }
-
-        // --- Network ---
-        var configuredIface = plasmoid.configuration.networkInterface
-        var iface = configuredIface && configuredIface.length > 0
-            ? configuredIface
-            : parseDefaultIface(routeSection)
-
-        if (iface) {
-            var netNow = parseNetDev(netSection, iface)
-            var now = Date.now()
-            if (netNow) {
-                if (prevNet && prevNet.iface === iface) {
-                    var deltaSec = (now - prevNet.time) / 1000
-                    var deltaRx = netNow.rx - prevNet.rx
-                    var deltaTx = netNow.tx - prevNet.tx
-                    if (deltaSec > 0 && deltaRx >= 0 && deltaTx >= 0) {
-                        downloadMbps = (deltaRx * 8 / 1000000) / deltaSec
-                        uploadMbps = (deltaTx * 8 / 1000000) / deltaSec
-                    }
-                }
-                prevNet = { rx: netNow.rx, tx: netNow.tx, time: now, iface: iface }
+    Sensors.Sensor {
+        id: cpuSensor
+        sensorId: "cpu/all/usage"
+        updateRateLimit: root.updateMs
+        enabled: true
+        onValueChanged: {
+            if (value !== undefined && !isNaN(value)) {
+                root.cpuPercent = Math.max(0, Math.min(100, Number(value)))
             }
         }
     }
 
-    Plasma5Support.DataSource {
-        id: executable
-        engine: "executable"
-        connectedSources: []
-        onNewData: (sourceName, data) => {
-            var stdout = data["stdout"]
-            if (stdout) {
-                root.handleOutput(stdout)
+    Sensors.Sensor {
+        id: gpuSensor
+        sensorId: "gpu/all/usage"
+        updateRateLimit: root.updateMs
+        enabled: true
+        onValueChanged: {
+            if (value !== undefined && !isNaN(value)) {
+                root.gpuPercent = Math.max(0, Math.min(100, Number(value)))
             }
-            disconnectSource(sourceName)
-        }
-        function exec(cmd) {
-            connectSource(cmd)
         }
     }
 
-    readonly property string pollCommand:
-        "cat /proc/stat | head -n1; echo '###SPLIT###'; cat /sys/class/drm/card1/device/gpu_busy_percent 2>/dev/null || echo 0; echo '###SPLIT###'; cat /proc/net/dev; echo '###SPLIT###'; ip route show default 2>/dev/null | head -n1"
+    Sensors.Sensor {
+        id: netDownSensor
+        sensorId: root.netPrefix + "download"
+        updateRateLimit: root.updateMs
+        enabled: true
+        onValueChanged: {
+            if (value !== undefined && !isNaN(value)) {
+                root.downloadMbps = Math.max(0, Number(value) * 8 / 1000000)
+            }
+        }
+    }
 
-    Timer {
-        interval: (plasmoid.configuration.updateInterval || 5) * 1000
-        running: true
-        repeat: true
-        triggeredOnStart: true
-        onTriggered: executable.exec(root.pollCommand)
+    Sensors.Sensor {
+        id: netUpSensor
+        sensorId: root.netPrefix + "upload"
+        updateRateLimit: root.updateMs
+        enabled: true
+        onValueChanged: {
+            if (value !== undefined && !isNaN(value)) {
+                root.uploadMbps = Math.max(0, Number(value) * 8 / 1000000)
+            }
+        }
     }
 
     component StatBar: ColumnLayout {
@@ -205,14 +142,22 @@ PlasmoidItem {
         Layout.preferredHeight: plasmoid.configuration.popupHeight
         spacing: Kirigami.Units.smallSpacing * 2
 
-        onWidthChanged: {
-            if (plasmoid.expanded && width >= Layout.minimumWidth && width !== plasmoid.configuration.popupWidth) {
-                plasmoid.configuration.popupWidth = width;
-            }
-        }
-        onHeightChanged: {
-            if (plasmoid.expanded && height >= Layout.minimumHeight && height !== plasmoid.configuration.popupHeight) {
-                plasmoid.configuration.popupHeight = height;
+        onWidthChanged: resizeSaveTimer.restart()
+        onHeightChanged: resizeSaveTimer.restart()
+
+        Timer {
+            id: resizeSaveTimer
+            interval: 250
+            repeat: false
+            onTriggered: {
+                if (plasmoid.expanded && fullRepItem.Window.window && fullRepItem.Window.window.visible) {
+                    if (fullRepItem.width >= fullRepItem.Layout.minimumWidth && fullRepItem.width !== plasmoid.configuration.popupWidth) {
+                        plasmoid.configuration.popupWidth = fullRepItem.width;
+                    }
+                    if (fullRepItem.height >= fullRepItem.Layout.minimumHeight && fullRepItem.height !== plasmoid.configuration.popupHeight) {
+                        plasmoid.configuration.popupHeight = fullRepItem.height;
+                    }
+                }
             }
         }
 
@@ -294,6 +239,34 @@ PlasmoidItem {
             onClicked: root.expanded = !root.expanded
         }
 
+        component CompactBar: Rectangle {
+            id: barItem
+            property real ratio: 0
+            property color barColor: "#ffffff"
+            property bool verticalFill: false
+
+            Layout.fillWidth: !verticalFill
+            Layout.fillHeight: verticalFill
+            Layout.preferredWidth: verticalFill ? compact.barThickness : -1
+            Layout.preferredHeight: verticalFill ? -1 : compact.barThickness
+            radius: (verticalFill ? width : height) / 2
+            color: root.trackColor
+            clip: true
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.bottom: parent.bottom
+                anchors.top: barItem.verticalFill ? undefined : parent.top
+                anchors.right: barItem.verticalFill ? parent.right : undefined
+                radius: parent.radius
+                color: barItem.barColor
+                width: barItem.verticalFill ? parent.width : Math.max(0, Math.min(1, barItem.ratio)) * parent.width
+                height: barItem.verticalFill ? Math.max(0, Math.min(1, barItem.ratio)) * parent.height : parent.height
+                Behavior on width { enabled: !barItem.verticalFill; NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+                Behavior on height { enabled: barItem.verticalFill; NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+            }
+        }
+
         // Horizontal layout (horizontal bars, stacked):
         ColumnLayout {
             anchors.centerIn: parent
@@ -301,73 +274,10 @@ PlasmoidItem {
             spacing: compact.barGap
             visible: !compact.isVerticalLayout
 
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: compact.barThickness
-                radius: height / 2
-                color: root.trackColor
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    radius: parent.radius
-                    color: root.cpuColor
-                    width: Math.max(0, Math.min(1, root.cpuPercent / 100)) * parent.width
-                    Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: compact.barThickness
-                radius: height / 2
-                color: root.trackColor
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    radius: parent.radius
-                    color: root.gpuColor
-                    width: Math.max(0, Math.min(1, root.gpuPercent / 100)) * parent.width
-                    Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: compact.barThickness
-                radius: height / 2
-                color: root.trackColor
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    radius: parent.radius
-                    color: root.downloadColor
-                    width: root.maxDownloadMbps > 0
-                        ? Math.max(0, Math.min(1, root.downloadMbps / root.maxDownloadMbps)) * parent.width
-                        : 0
-                    Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: compact.barThickness
-                radius: height / 2
-                color: root.trackColor
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    radius: parent.radius
-                    color: root.uploadColor
-                    width: root.maxUploadMbps > 0
-                        ? Math.max(0, Math.min(1, root.uploadMbps / root.maxUploadMbps)) * parent.width
-                        : 0
-                    Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                }
-            }
+            CompactBar { ratio: root.cpuPercent / 100; barColor: root.cpuColor; verticalFill: false }
+            CompactBar { ratio: root.gpuPercent / 100; barColor: root.gpuColor; verticalFill: false }
+            CompactBar { ratio: root.maxDownloadMbps > 0 ? root.downloadMbps / root.maxDownloadMbps : 0; barColor: root.downloadColor; verticalFill: false }
+            CompactBar { ratio: root.maxUploadMbps > 0 ? root.uploadMbps / root.maxUploadMbps : 0; barColor: root.uploadColor; verticalFill: false }
         }
 
         // Vertical layout (vertical bars, side-by-side):
@@ -377,73 +287,10 @@ PlasmoidItem {
             spacing: compact.barGap
             visible: compact.isVerticalLayout
 
-            Rectangle {
-                Layout.fillHeight: true
-                Layout.preferredWidth: compact.barThickness
-                radius: width / 2
-                color: root.trackColor
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    radius: parent.radius
-                    color: root.cpuColor
-                    height: Math.max(0, Math.min(1, root.cpuPercent / 100)) * parent.height
-                    Behavior on height { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                }
-            }
-
-            Rectangle {
-                Layout.fillHeight: true
-                Layout.preferredWidth: compact.barThickness
-                radius: width / 2
-                color: root.trackColor
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    radius: parent.radius
-                    color: root.gpuColor
-                    height: Math.max(0, Math.min(1, root.gpuPercent / 100)) * parent.height
-                    Behavior on height { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                }
-            }
-
-            Rectangle {
-                Layout.fillHeight: true
-                Layout.preferredWidth: compact.barThickness
-                radius: width / 2
-                color: root.trackColor
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    radius: parent.radius
-                    color: root.downloadColor
-                    height: root.maxDownloadMbps > 0
-                        ? Math.max(0, Math.min(1, root.downloadMbps / root.maxDownloadMbps)) * parent.height
-                        : 0
-                    Behavior on height { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                }
-            }
-
-            Rectangle {
-                Layout.fillHeight: true
-                Layout.preferredWidth: compact.barThickness
-                radius: width / 2
-                color: root.trackColor
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    radius: parent.radius
-                    color: root.uploadColor
-                    height: root.maxUploadMbps > 0
-                        ? Math.max(0, Math.min(1, root.uploadMbps / root.maxUploadMbps)) * parent.height
-                        : 0
-                    Behavior on height { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                }
-            }
+            CompactBar { ratio: root.cpuPercent / 100; barColor: root.cpuColor; verticalFill: true }
+            CompactBar { ratio: root.gpuPercent / 100; barColor: root.gpuColor; verticalFill: true }
+            CompactBar { ratio: root.maxDownloadMbps > 0 ? root.downloadMbps / root.maxDownloadMbps : 0; barColor: root.downloadColor; verticalFill: true }
+            CompactBar { ratio: root.maxUploadMbps > 0 ? root.uploadMbps / root.maxUploadMbps : 0; barColor: root.uploadColor; verticalFill: true }
         }
     }
 }
