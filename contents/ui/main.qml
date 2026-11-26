@@ -95,6 +95,7 @@ PlasmoidItem {
         property string valueText: ""
         property real ratio: 0
         property color barColor: "#ff2fc0"
+        property bool animEnabled: true
 
         Layout.fillWidth: true
         spacing: Kirigami.Units.smallSpacing / 2
@@ -127,6 +128,7 @@ PlasmoidItem {
                 width: Math.max(0, Math.min(1, barRoot.ratio)) * parent.width
 
                 Behavior on width {
+                    enabled: barRoot.animEnabled
                     NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
                 }
             }
@@ -166,6 +168,7 @@ PlasmoidItem {
             valueText: root.cpuPercent.toFixed(0) + "%"
             ratio: root.cpuPercent / 100
             barColor: root.cpuColor
+            animEnabled: fullRepItem.visible
         }
 
         StatBar {
@@ -173,6 +176,7 @@ PlasmoidItem {
             valueText: root.gpuPercent.toFixed(0) + "%"
             ratio: root.gpuPercent / 100
             barColor: root.gpuColor
+            animEnabled: fullRepItem.visible
         }
 
         StatBar {
@@ -180,6 +184,7 @@ PlasmoidItem {
             valueText: root.formatMbps(root.downloadMbps)
             ratio: root.maxDownloadMbps > 0 ? root.downloadMbps / root.maxDownloadMbps : 0
             barColor: root.downloadColor
+            animEnabled: fullRepItem.visible
         }
 
         StatBar {
@@ -187,6 +192,7 @@ PlasmoidItem {
             valueText: root.formatMbps(root.uploadMbps)
             ratio: root.maxUploadMbps > 0 ? root.uploadMbps / root.maxUploadMbps : 0
             barColor: root.uploadColor
+            animEnabled: fullRepItem.visible
         }
     }
 
@@ -244,6 +250,7 @@ PlasmoidItem {
             property real ratio: 0
             property color barColor: "#ffffff"
             property bool verticalFill: false
+            property bool animEnabled: true
 
             Layout.fillWidth: !verticalFill
             Layout.fillHeight: verticalFill
@@ -253,6 +260,8 @@ PlasmoidItem {
             color: root.trackColor
             clip: true
 
+            readonly property real clampedRatio: Math.max(0, Math.min(1, barItem.ratio))
+
             Rectangle {
                 anchors.left: parent.left
                 anchors.bottom: parent.bottom
@@ -260,10 +269,10 @@ PlasmoidItem {
                 anchors.right: barItem.verticalFill ? parent.right : undefined
                 radius: parent.radius
                 color: barItem.barColor
-                width: barItem.verticalFill ? parent.width : Math.max(0, Math.min(1, barItem.ratio)) * parent.width
-                height: barItem.verticalFill ? Math.max(0, Math.min(1, barItem.ratio)) * parent.height : parent.height
-                Behavior on width { enabled: !barItem.verticalFill; NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                Behavior on height { enabled: barItem.verticalFill; NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+                width: barItem.verticalFill ? parent.width : Math.round(barItem.clampedRatio * parent.width * 2) / 2
+                height: barItem.verticalFill ? Math.round(barItem.clampedRatio * parent.height * 2) / 2 : parent.height
+                Behavior on width { enabled: barItem.animEnabled && !barItem.verticalFill; NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+                Behavior on height { enabled: barItem.animEnabled && barItem.verticalFill; NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
             }
         }
 
@@ -274,10 +283,10 @@ PlasmoidItem {
             spacing: compact.barGap
             visible: !compact.isVerticalLayout
 
-            CompactBar { ratio: root.cpuPercent / 100; barColor: root.cpuColor; verticalFill: false }
-            CompactBar { ratio: root.gpuPercent / 100; barColor: root.gpuColor; verticalFill: false }
-            CompactBar { ratio: root.maxDownloadMbps > 0 ? root.downloadMbps / root.maxDownloadMbps : 0; barColor: root.downloadColor; verticalFill: false }
-            CompactBar { ratio: root.maxUploadMbps > 0 ? root.uploadMbps / root.maxUploadMbps : 0; barColor: root.uploadColor; verticalFill: false }
+            CompactBar { ratio: root.cpuPercent / 100; barColor: root.cpuColor; verticalFill: false; animEnabled: !compact.isVerticalLayout }
+            CompactBar { ratio: root.gpuPercent / 100; barColor: root.gpuColor; verticalFill: false; animEnabled: !compact.isVerticalLayout }
+            CompactBar { ratio: root.maxDownloadMbps > 0 ? root.downloadMbps / root.maxDownloadMbps : 0; barColor: root.downloadColor; verticalFill: false; animEnabled: !compact.isVerticalLayout }
+            CompactBar { ratio: root.maxUploadMbps > 0 ? root.uploadMbps / root.maxUploadMbps : 0; barColor: root.uploadColor; verticalFill: false; animEnabled: !compact.isVerticalLayout }
         }
 
         // Vertical layout (vertical bars, side-by-side):
@@ -287,10 +296,10 @@ PlasmoidItem {
             spacing: compact.barGap
             visible: compact.isVerticalLayout
 
-            CompactBar { ratio: root.cpuPercent / 100; barColor: root.cpuColor; verticalFill: true }
-            CompactBar { ratio: root.gpuPercent / 100; barColor: root.gpuColor; verticalFill: true }
-            CompactBar { ratio: root.maxDownloadMbps > 0 ? root.downloadMbps / root.maxDownloadMbps : 0; barColor: root.downloadColor; verticalFill: true }
-            CompactBar { ratio: root.maxUploadMbps > 0 ? root.uploadMbps / root.maxUploadMbps : 0; barColor: root.uploadColor; verticalFill: true }
+            CompactBar { ratio: root.cpuPercent / 100; barColor: root.cpuColor; verticalFill: true; animEnabled: compact.isVerticalLayout }
+            CompactBar { ratio: root.gpuPercent / 100; barColor: root.gpuColor; verticalFill: true; animEnabled: compact.isVerticalLayout }
+            CompactBar { ratio: root.maxDownloadMbps > 0 ? root.downloadMbps / root.maxDownloadMbps : 0; barColor: root.downloadColor; verticalFill: true; animEnabled: compact.isVerticalLayout }
+            CompactBar { ratio: root.maxUploadMbps > 0 ? root.uploadMbps / root.maxUploadMbps : 0; barColor: root.uploadColor; verticalFill: true; animEnabled: compact.isVerticalLayout }
         }
     }
 }
